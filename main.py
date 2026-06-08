@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, redirect
 import sqlite3
 import os
 
@@ -8,11 +8,13 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "database", "restaurant.db")
 
 
 def init_db():
+    # 确保 database 资料夹存在
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
+    # 建立 restaurants 资料表
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS restaurants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,9 +27,11 @@ def init_db():
     )
     """)
 
+    # 检查资料表有没有资料
     cursor.execute("SELECT COUNT(*) FROM restaurants")
     count = cursor.fetchone()[0]
 
+    # 如果没有资料，自动新增预设餐厅资料
     if count == 0:
         restaurants = [
             ("小火锅店", "台中", "火锅", 4.5, "$$", "台中市西屯区"),
@@ -41,7 +45,7 @@ def init_db():
         ]
 
         cursor.executemany("""
-        INSERT INTO restaurants 
+        INSERT INTO restaurants
         (name, area, category, rating, price_level, address)
         VALUES (?, ?, ?, ?, ?, ?)
         """, restaurants)
@@ -95,8 +99,8 @@ def home():
                 <h2>系统简介</h2>
                 <p>
                     本系统用于收集、查询和分析餐厅评价资料。
-                    使用者可以查看餐厅清单、依照餐厅类型筛选、
-                    依照评分查询，并透过 API 取得 JSON 格式资料。
+                    使用者可以查看餐厅清单、新增餐厅资料、删除错误资料、
+                    依照餐厅类型筛选、依照评分查询，并透过 API 取得 JSON 格式资料。
                 </p>
             </div>
 
@@ -106,6 +110,7 @@ def home():
                 <a href="/restaurants?min_rating=4.3">评分 4.3 以上</a>
                 <a href="/api/restaurants">查看 JSON API</a>
                 <a href="/analysis">查看资料分析</a>
+                <a href="/add">新增餐厅资料</a>
             </div>
         </div>
     </body>
@@ -143,6 +148,14 @@ def restaurants():
             <ul class="restaurant-list">
     """
 
+    if len(rows) == 0:
+        html += """
+            <li>
+                <h3>没有符合条件的餐厅资料</h3>
+                <p>可以回首页新增餐厅资料，或重新选择查询条件。</p>
+            </li>
+        """
+
     for r in rows:
         html += f"""
             <li>
@@ -151,6 +164,12 @@ def restaurants():
                 <p>评分：{r['rating']} 分</p>
                 <p>价格：{r['price_level']}</p>
                 <p>地址：{r['address']}</p>
+
+                <a class="delete-btn"
+                   href="/delete/{r['id']}"
+                   onclick="return confirm('确定要删除这间餐厅吗？')">
+                   删除
+                </a>
             </li>
         """
 
@@ -163,6 +182,93 @@ def restaurants():
     """
 
     return html
+
+
+@app.route("/add", methods=["GET", "POST"])
+def add_restaurant():
+    if request.method == "POST":
+        name = request.form.get("name")
+        area = request.form.get("area")
+        category = request.form.get("category")
+        rating = request.form.get("rating")
+        price_level = request.form.get("price_level")
+        address = request.form.get("address")
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        INSERT INTO restaurants
+        (name, area, category, rating, price_level, address)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, area, category, float(rating), price_level, address))
+
+        conn.commit()
+        conn.close()
+
+        return redirect("/restaurants")
+
+    return """
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>新增餐厅资料</title>
+        <link rel="stylesheet" href="/static/style.css">
+    </head>
+    <body>
+        <div class="header">
+            <h1>新增餐厅资料</h1>
+            <p>Add New Restaurant</p>
+        </div>
+
+        <div class="container">
+            <div class="card">
+                <form method="POST">
+                    <p>餐厅名称：</p>
+                    <input type="text" name="name" placeholder="例如：逢甲炒饭店" required>
+
+                    <p>地区：</p>
+                    <input type="text" name="area" placeholder="例如：台中" required>
+
+                    <p>餐厅类型：</p>
+                    <input type="text" name="category" placeholder="例如：中式料理" required>
+
+                    <p>评分：</p>
+                    <input type="number" step="0.1" min="0" max="5" name="rating" placeholder="例如：4.5" required>
+
+                    <p>价格区间：</p>
+                    <select name="price_level" required>
+                        <option value="$">$</option>
+                        <option value="$$">$$</option>
+                        <option value="$$$">$$$</option>
+                    </select>
+
+                    <p>地址：</p>
+                    <input type="text" name="address" placeholder="例如：台中市西屯区" required>
+
+                    <br><br>
+                    <button type="submit">新增餐厅</button>
+                </form>
+            </div>
+
+            <a class="back-btn" href="/">回首页</a>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.route("/delete/<int:restaurant_id>")
+def delete_restaurant(restaurant_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM restaurants WHERE id = ?", (restaurant_id,))
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/restaurants")
 
 
 @app.route("/api/restaurants")
@@ -202,13 +308,16 @@ def analysis():
     top_restaurant = cursor.fetchone()
 
     cursor.execute("""
-    SELECT category, COUNT(*) 
-    FROM restaurants 
+    SELECT category, COUNT(*)
+    FROM restaurants
     GROUP BY category
     """)
     category_counts = cursor.fetchall()
 
     conn.close()
+
+    if avg_rating is None:
+        avg_rating = 0
 
     html = f"""
     <html>
@@ -234,17 +343,33 @@ def analysis():
                     <h2>{avg_rating:.2f}</h2>
                     <p>平均评分</p>
                 </div>
+    """
 
+    if top_restaurant:
+        html += f"""
                 <div class="analysis-item">
                     <h2>{top_restaurant[1]}</h2>
                     <p>最高评分：{top_restaurant[0]}</p>
                 </div>
+        """
+    else:
+        html += """
+                <div class="analysis-item">
+                    <h2>无</h2>
+                    <p>目前没有餐厅资料</p>
+                </div>
+        """
+
+    html += """
             </div>
 
             <div class="card">
                 <h2>各类型餐厅数量</h2>
                 <ul>
     """
+
+    if len(category_counts) == 0:
+        html += "<li>目前没有资料</li>"
 
     for category, count in category_counts:
         html += f"<li>{category}：{count} 间</li>"

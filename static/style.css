@@ -100,6 +100,7 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 20px;
+    margin-bottom: 20px;
 }
 
 .analysis-item {
@@ -113,9 +114,50 @@ body {
 .analysis-item h2 {
     color: #ff5e57;
     margin: 0;
+    font-size: 32px;
 }
 
 .analysis-item p {
     margin-top: 8px;
     font-weight: bold;
+}
+
+input,
+select {
+    width: 100%;
+    padding: 12px;
+    margin-top: 6px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 16px;
+    box-sizing: border-box;
+}
+
+button {
+    background: #ff5e57;
+    color: white;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #e04b45;
+}
+
+.delete-btn {
+    display: inline-block;
+    margin-top: 10px;
+    text-decoration: none;
+    background: #d63031;
+    color: white;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.delete-btn:hover {
+    background: #b71c1c;
 }
