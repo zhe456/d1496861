@@ -1,120 +1,246 @@
 body {
     margin: 0;
     font-family: "Microsoft JhengHei", Arial, sans-serif;
-    background: #f4f6f8;
-    color: #222;
+    color: #2b2b2b;
+    min-height: 100vh;
+
+    /*
+        背景概念：
+        红色：火锅 / 韩式料理
+        橘色：烧肉 / 炸物
+        米色：咖啡厅 / 早午餐
+        绿色：健康料理 / 日式清爽感
+        深色：高级餐厅 / 烧肉店
+    */
+    background:
+        radial-gradient(circle at 8% 15%, rgba(255, 99, 71, 0.35), transparent 22%),
+        radial-gradient(circle at 88% 12%, rgba(255, 183, 77, 0.45), transparent 24%),
+        radial-gradient(circle at 15% 85%, rgba(129, 199, 132, 0.28), transparent 25%),
+        radial-gradient(circle at 82% 78%, rgba(121, 85, 72, 0.28), transparent 26%),
+        radial-gradient(circle at 50% 50%, rgba(255, 235, 179, 0.45), transparent 32%),
+        linear-gradient(135deg, #fff3e0, #ffe0b2, #f8fafc);
+    background-attachment: fixed;
 }
 
+/* 背景装饰：模拟多种餐厅元素 */
+body::before {
+    content: "火锅  拉面  烧肉  咖啡  炸鸡  义大利面  便当  早午餐";
+    position: fixed;
+    top: 120px;
+    left: -40px;
+    width: 120%;
+    font-size: 42px;
+    font-weight: bold;
+    letter-spacing: 28px;
+    line-height: 2.4;
+    color: rgba(255, 255, 255, 0.35);
+    transform: rotate(-12deg);
+    z-index: -2;
+    pointer-events: none;
+}
+
+/* 背景圆点装饰 */
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+        radial-gradient(circle, rgba(255, 122, 24, 0.16) 2px, transparent 2px),
+        radial-gradient(circle, rgba(255, 61, 61, 0.12) 2px, transparent 2px);
+    background-size: 45px 45px, 70px 70px;
+    background-position: 0 0, 25px 25px;
+    z-index: -3;
+    pointer-events: none;
+}
+
+/* 顶部标题区 */
 .header {
-    background: linear-gradient(135deg, #ff8c42, #ff5e57);
+    background:
+        linear-gradient(rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.28)),
+        linear-gradient(120deg, #8d3c1e, #e85d04, #ffba08, #d62828);
     color: white;
-    padding: 35px;
+    padding: 55px 20px;
     text-align: center;
+    border-bottom-left-radius: 40px;
+    border-bottom-right-radius: 40px;
+    box-shadow: 0 10px 28px rgba(93, 48, 26, 0.35);
 }
 
 .header h1 {
     margin: 0;
-    font-size: 36px;
+    font-size: 42px;
+    letter-spacing: 2px;
 }
 
 .header p {
-    margin-top: 10px;
+    margin-top: 12px;
     font-size: 18px;
+    opacity: 0.95;
 }
 
+/* 主要内容 */
 .container {
     width: 85%;
-    margin: 30px auto;
+    margin: 38px auto;
 }
 
+/* 玻璃卡片 */
 .card {
-    background: white;
-    padding: 25px;
-    margin-bottom: 20px;
-    border-radius: 14px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    background: rgba(255, 255, 255, 0.83);
+    backdrop-filter: blur(14px);
+    padding: 30px;
+    margin-bottom: 26px;
+    border-radius: 24px;
+    box-shadow: 0 10px 28px rgba(99, 55, 20, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.75);
 }
 
+.card h2 {
+    color: #d9480f;
+}
+
+/* 首页功能选单 */
 .menu {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 20px;
 }
 
 .menu a {
     display: block;
     text-decoration: none;
-    background: white;
-    color: #ff5e57;
-    padding: 18px;
-    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #d9480f;
+    padding: 22px;
+    border-radius: 22px;
     font-weight: bold;
     text-align: center;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 22px rgba(99, 55, 20, 0.16);
+    border: 1px solid rgba(255, 170, 100, 0.45);
+    transition: 0.25s;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 每个按钮加一点餐厅融合感 */
+.menu a::before {
+    content: "";
+    position: absolute;
+    width: 90px;
+    height: 90px;
+    right: -25px;
+    top: -25px;
+    background: radial-gradient(circle, rgba(255, 122, 24, 0.28), transparent 70%);
 }
 
 .menu a:hover {
-    background: #ff5e57;
+    transform: translateY(-6px);
+    background: linear-gradient(135deg, #d62828, #f77f00, #fcbf49);
     color: white;
+    box-shadow: 0 14px 30px rgba(214, 40, 40, 0.32);
 }
 
+/* 餐厅清单 */
 .restaurant-list {
     list-style: none;
     padding: 0;
 }
 
 .restaurant-list li {
-    background: white;
-    margin-bottom: 15px;
-    padding: 18px;
-    border-left: 6px solid #ff8c42;
-    border-radius: 10px;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+    background: rgba(255, 255, 255, 0.9);
+    margin-bottom: 20px;
+    padding: 24px;
+    border-radius: 22px;
+    border-left: 8px solid #f77f00;
+    box-shadow: 0 8px 22px rgba(99, 55, 20, 0.15);
+    transition: 0.25s;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 餐厅卡片右侧装饰 */
+.restaurant-list li::after {
+    content: "";
+    position: absolute;
+    right: -35px;
+    bottom: -35px;
+    width: 130px;
+    height: 130px;
+    background:
+        radial-gradient(circle, rgba(255, 186, 8, 0.35), transparent 68%);
+    border-radius: 50%;
+}
+
+.restaurant-list li:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 14px 30px rgba(99, 55, 20, 0.22);
+}
+
+.restaurant-list h3 {
+    margin-top: 0;
+    color: #2b2b2b;
 }
 
 .tag {
     display: inline-block;
-    background: #ffe1d2;
-    color: #d94b3d;
-    padding: 4px 10px;
+    background: linear-gradient(135deg, #ffe8cc, #ffd6a5);
+    color: #c2410c;
+    padding: 5px 13px;
     border-radius: 20px;
     font-size: 14px;
     margin-left: 8px;
 }
 
+/* 返回按钮 */
 .back-btn {
     display: inline-block;
     margin-top: 20px;
     text-decoration: none;
-    background: #333;
+    background: #2f2f2f;
     color: white;
-    padding: 10px 18px;
-    border-radius: 8px;
+    padding: 12px 22px;
+    border-radius: 12px;
+    transition: 0.25s;
 }
 
 .back-btn:hover {
-    background: #ff5e57;
+    background: #d62828;
+    transform: translateY(-2px);
 }
 
+/* 分析页面 */
 .analysis-box {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 20px;
-    margin-bottom: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 24px;
+    margin-bottom: 26px;
 }
 
 .analysis-item {
-    background: white;
-    padding: 22px;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 28px;
     text-align: center;
-    border-radius: 14px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    border-radius: 24px;
+    box-shadow: 0 10px 28px rgba(99, 55, 20, 0.16);
+    border: 1px solid rgba(255, 170, 100, 0.45);
+    position: relative;
+    overflow: hidden;
+}
+
+.analysis-item::before {
+    content: "";
+    position: absolute;
+    width: 90px;
+    height: 90px;
+    left: -30px;
+    top: -30px;
+    background: radial-gradient(circle, rgba(255, 122, 24, 0.28), transparent 70%);
 }
 
 .analysis-item h2 {
-    color: #ff5e57;
+    color: #d62828;
     margin: 0;
-    font-size: 32px;
+    font-size: 38px;
 }
 
 .analysis-item p {
@@ -122,42 +248,56 @@ body {
     font-weight: bold;
 }
 
+/* 表单 */
 input,
 select {
     width: 100%;
-    padding: 12px;
+    padding: 14px;
     margin-top: 6px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
+    border: 1px solid #f4a261;
+    border-radius: 12px;
     font-size: 16px;
     box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.95);
+}
+
+input:focus,
+select:focus {
+    outline: none;
+    border-color: #d62828;
+    box-shadow: 0 0 0 3px rgba(214, 40, 40, 0.16);
 }
 
 button {
-    background: #ff5e57;
+    background: linear-gradient(135deg, #d62828, #f77f00, #fcbf49);
     color: white;
     border: none;
-    padding: 12px 22px;
-    border-radius: 8px;
+    padding: 14px 26px;
+    border-radius: 12px;
     font-size: 16px;
     cursor: pointer;
+    transition: 0.25s;
 }
 
 button:hover {
-    background: #e04b45;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 22px rgba(214, 40, 40, 0.3);
 }
 
+/* 删除按钮 */
 .delete-btn {
     display: inline-block;
     margin-top: 10px;
     text-decoration: none;
     background: #d63031;
     color: white;
-    padding: 8px 14px;
-    border-radius: 8px;
+    padding: 8px 15px;
+    border-radius: 10px;
     font-size: 14px;
+    transition: 0.25s;
 }
 
 .delete-btn:hover {
     background: #b71c1c;
+    transform: translateY(-2px);
 }
