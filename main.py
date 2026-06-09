@@ -1,20 +1,26 @@
-from flask import Flask, jsonify, request, redirect
+from flask import Flask, jsonify, request, redirect, session
 import sqlite3
 import os
 
 app = Flask(__name__)
 
+# session 需要 secret_key
+app.secret_key = "restaurant_platform_secret_key"
+
 DB_PATH = os.path.join(os.path.dirname(__file__), "database", "restaurant.db")
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
+
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "1234"
 
 
 def init_db():
-    # 确保 database 资料夹存在
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 建立 restaurants 资料表
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS restaurants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,11 +33,9 @@ def init_db():
     )
     """)
 
-    # 检查资料表有没有资料
     cursor.execute("SELECT COUNT(*) FROM restaurants")
     count = cursor.fetchone()[0]
 
-    # 如果没有资料，自动新增预设餐厅资料
     if count == 0:
         restaurants = [
             ("小火锅店", "台中", "火锅", 4.5, "$$", "台中市西屯区"),
@@ -52,6 +56,10 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+def is_login():
+    return session.get("login") == True
 
 
 def get_restaurants(category=None, min_rating=None):
@@ -81,6 +89,44 @@ def get_restaurants(category=None, min_rating=None):
 
 @app.route("/")
 def home():
+    # 没登入：首页只显示两种登入方式
+    if not is_login():
+        return """
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>餐厅评价资料分析平台</title>
+            <link rel="stylesheet" href="/static/style.css">
+        </head>
+        <body>
+            <div class="header">
+                <h1>餐厅评价资料分析平台</h1>
+                <p>Restaurant Review Data Analysis Platform</p>
+            </div>
+
+            <div class="container">
+                <div class="card">
+                    <h2>管理员登入</h2>
+                    <p>
+                        本系统为餐厅评价资料分析平台。
+                        系统提供两种登入方式：手动帐号密码登入，以及 AI 人脸辨识登入 Demo。
+                    </p>
+                    <p>
+                        登入后可以使用餐厅资料管理、查询、JSON API、资料分析、新增餐厅和删除餐厅等功能。
+                    </p>
+                    <p class="warning-text">目前尚未登入，请选择一种登入方式。</p>
+                </div>
+
+                <div class="menu">
+                    <a href="/login">手动登入</a>
+                    <a href="/face-login">人脸辨识登入</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+    # 已登入：才显示完整功能
     return """
     <html>
     <head>
@@ -99,9 +145,10 @@ def home():
                 <h2>系统简介</h2>
                 <p>
                     本系统用于收集、查询和分析餐厅评价资料。
-                    使用者可以查看餐厅清单、新增餐厅资料、删除错误资料、
-                    依照餐厅类型筛选、依照评分查询，并透过 API 取得 JSON 格式资料。
+                    管理员可以查看餐厅清单、新增餐厅资料、删除错误资料、
+                    查看 JSON API，并进行餐厅资料分析。
                 </p>
+                <p class="success-text">目前已登入管理员模式，可以使用完整功能。</p>
             </div>
 
             <div class="menu">
@@ -111,6 +158,7 @@ def home():
                 <a href="/api/restaurants">查看 JSON API</a>
                 <a href="/analysis">查看资料分析</a>
                 <a href="/add">新增餐厅资料</a>
+                <a href="/logout">登出系统</a>
             </div>
         </div>
     </body>
@@ -118,8 +166,174 @@ def home():
     """
 
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = ""
+
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            session["login"] = True
+            session["login_method"] = "手动帐号密码登入"
+            return redirect("/")
+        else:
+            error = "帐号或密码错误，请重新输入。"
+
+    return f"""
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>手动登入</title>
+        <link rel="stylesheet" href="/static/style.css">
+    </head>
+    <body>
+        <div class="header">
+            <h1>手动登入</h1>
+            <p>Manual Login</p>
+        </div>
+
+        <div class="container">
+            <div class="card">
+                <form method="POST">
+                    <p>管理员帐号：</p>
+                    <input type="text" name="username" placeholder="admin" required>
+
+                    <p>管理员密码：</p>
+                    <input type="password" name="password" placeholder="1234" required>
+
+                    <br><br>
+                    <button type="submit">登入</button>
+                </form>
+
+                <p class="warning-text">{error}</p>
+
+                <p>测试帐号：admin</p>
+                <p>测试密码：1234</p>
+            </div>
+
+            <a class="back-btn" href="/">回首页</a>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.route("/face-login", methods=["GET", "POST"])
+def face_login():
+    result = ""
+
+    if request.method == "POST":
+        face_image = request.files.get("face_image")
+
+        if face_image is None or face_image.filename == "":
+            result = "请上传一张图片。"
+        else:
+            filename = face_image.filename.lower()
+            allowed_ext = [".jpg", ".jpeg", ".png", ".webp"]
+
+            if not any(filename.endswith(ext) for ext in allowed_ext):
+                result = "上传失败：图片格式只支援 jpg、jpeg、png、webp。"
+            else:
+                save_path = os.path.join(UPLOAD_FOLDER, face_image.filename)
+                face_image.save(save_path)
+
+                file_size = os.path.getsize(save_path)
+
+                if file_size > 0:
+                    session["login"] = True
+                    session["login_method"] = "AI 人脸辨识登入 Demo"
+                    return redirect("/face-result")
+                else:
+                    result = "影像分析失败：档案内容为空。"
+
+    return f"""
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>人脸辨识登入</title>
+        <link rel="stylesheet" href="/static/style.css">
+    </head>
+    <body>
+        <div class="header">
+            <h1>人脸辨识登入</h1>
+            <p>AI Face Login Demo</p>
+        </div>
+
+        <div class="container">
+            <div class="card">
+                <h2>AI Vision 登入说明</h2>
+                <p>
+                    此功能为 AI Vision Demo，主要展示影像上传、影像分析与身份验证流程。
+                    上传管理员照片后，系统会检查图片格式与档案内容，并模拟完成管理员身份验证。
+                </p>
+
+                <form method="POST" enctype="multipart/form-data">
+                    <p>上传管理员人脸图片：</p>
+                    <input type="file" name="face_image" accept="image/*" required>
+
+                    <br><br>
+                    <button type="submit">开始人脸辨识登入</button>
+                </form>
+
+                <p class="warning-text">{result}</p>
+            </div>
+
+            <a class="back-btn" href="/">回首页</a>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.route("/face-result")
+def face_result():
+    return """
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>人脸辨识结果</title>
+        <link rel="stylesheet" href="/static/style.css">
+    </head>
+    <body>
+        <div class="header">
+            <h1>人脸辨识结果</h1>
+            <p>AI Vision Analysis Result</p>
+        </div>
+
+        <div class="container">
+            <div class="card">
+                <h2>辨识成功</h2>
+                <p>系统已接收上传影像，并完成基础影像分析。</p>
+                <p>分析流程包含：图片上传、格式检查、档案内容检查、管理员身份验证 Demo。</p>
+                <p class="success-text">目前已进入管理员模式，可以新增与删除餐厅资料。</p>
+            </div>
+
+            <div class="menu">
+                <a href="/">进入系统首页</a>
+                <a href="/add">新增餐厅资料</a>
+                <a href="/restaurants">查看餐厅清单</a>
+                <a href="/analysis">查看资料分析</a>
+                <a href="/logout">登出系统</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
+
+
 @app.route("/restaurants")
 def restaurants():
+    if not is_login():
+        return redirect("/login-required")
+
     category = request.args.get("category")
     min_rating = request.args.get("min_rating")
 
@@ -186,6 +400,9 @@ def restaurants():
 
 @app.route("/add", methods=["GET", "POST"])
 def add_restaurant():
+    if not is_login():
+        return redirect("/login-required")
+
     if request.method == "POST":
         name = request.form.get("name")
         area = request.form.get("area")
@@ -260,6 +477,9 @@ def add_restaurant():
 
 @app.route("/delete/<int:restaurant_id>")
 def delete_restaurant(restaurant_id):
+    if not is_login():
+        return redirect("/login-required")
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -271,8 +491,44 @@ def delete_restaurant(restaurant_id):
     return redirect("/restaurants")
 
 
+@app.route("/login-required")
+def login_required():
+    return """
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>需要登入</title>
+        <link rel="stylesheet" href="/static/style.css">
+    </head>
+    <body>
+        <div class="header">
+            <h1>需要管理员登入</h1>
+            <p>Login Required</p>
+        </div>
+
+        <div class="container">
+            <div class="card">
+                <h2>权限不足</h2>
+                <p>系统功能需要先登入管理员模式。</p>
+                <p class="warning-text">请先选择手动登入或人脸辨识登入。</p>
+            </div>
+
+            <div class="menu">
+                <a href="/login">手动登入</a>
+                <a href="/face-login">人脸辨识登入</a>
+                <a href="/">回首页</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
 @app.route("/api/restaurants")
 def api_restaurants():
+    if not is_login():
+        return redirect("/login-required")
+
     category = request.args.get("category")
     min_rating = request.args.get("min_rating")
 
@@ -295,6 +551,9 @@ def api_restaurants():
 
 @app.route("/analysis")
 def analysis():
+    if not is_login():
+        return redirect("/login-required")
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 

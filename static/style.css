@@ -301,3 +301,13 @@ button:hover {
     background: #b71c1c;
     transform: translateY(-2px);
 }
+
+.success-text {
+    color: #198754;
+    font-weight: bold;
+}
+
+.warning-text {
+    color: #d63031;
+    font-weight: bold;
+}
