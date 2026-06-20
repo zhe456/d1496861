@@ -1,95 +1,63 @@
 from flask import Flask, jsonify, request, redirect, session
-import sqlite3
 import os
+import cv2
+
+from src.database.db import (
+    init_database,
+    check_login,
+    get_connection,
+    get_restaurants,
+    insert_restaurant,
+    delete_restaurant,
+)
 
 app = Flask(__name__)
 
 # session 需要 secret_key
 app.secret_key = "restaurant_platform_secret_key"
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "database", "restaurant.db")
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
-
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "1234"
-
-
-def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS restaurants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        area TEXT NOT NULL,
-        category TEXT NOT NULL,
-        rating REAL NOT NULL,
-        price_level TEXT NOT NULL,
-        address TEXT
-    )
-    """)
-
-    cursor.execute("SELECT COUNT(*) FROM restaurants")
-    count = cursor.fetchone()[0]
-
-    if count == 0:
-        restaurants = [
-            ("小火锅店", "台中", "火锅", 4.5, "$$", "台中市西屯区"),
-            ("日式拉面店", "台中", "日式料理", 4.2, "$$", "台中市北区"),
-            ("平价便当店", "台中", "便当", 4.0, "$", "台中市南区"),
-            ("韩式炸鸡店", "台中", "韩式料理", 4.6, "$$", "台中市西区"),
-            ("早午餐咖啡厅", "台中", "早午餐", 4.3, "$$", "台中市西屯区"),
-            ("烧肉店", "台中", "烧肉", 4.7, "$$$", "台中市南屯区"),
-            ("义大利面店", "台中", "义式料理", 4.1, "$$", "台中市西区"),
-            ("牛肉面店", "台中", "面食", 4.4, "$", "台中市北屯区"),
-        ]
-
-        cursor.executemany("""
-        INSERT INTO restaurants
-        (name, area, category, rating, price_level, address)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, restaurants)
-
-    conn.commit()
-    conn.close()
 
 
 def is_login():
     return session.get("login") == True
 
 
-def get_restaurants(category=None, min_rating=None):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+def detect_face(image_path):
+    """
+    使用 OpenCV Haar Cascade 偵測圖片中是否有人臉。
+    有偵測到人臉就回傳 True，否則回傳 False。
+    """
 
-    sql = "SELECT * FROM restaurants WHERE 1=1"
-    params = []
+    img = cv2.imread(image_path)
 
-    if category:
-        sql += " AND category = ?"
-        params.append(category)
+    if img is None:
+        return False, 0
 
-    if min_rating:
-        sql += " AND rating >= ?"
-        params.append(float(min_rating))
+    # OpenCV 讀取彩色影像是 BGR，轉成灰階後比較適合人臉偵測
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    sql += " ORDER BY rating DESC"
+    face_cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    face_cascade = cv2.CascadeClassifier(face_cascade_path)
 
-    cursor.execute(sql, params)
-    rows = cursor.fetchall()
+    if face_cascade.empty():
+        return False, 0
 
-    conn.close()
-    return rows
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(50, 50),
+    )
+
+    face_count = len(faces)
+
+    return face_count > 0, face_count
 
 
 @app.route("/")
 def home():
-    # 没登入：首页只显示两种登入方式
+    # 未登入：首页只显示两种登入方式
     if not is_login():
         return """
         <html>
@@ -109,7 +77,7 @@ def home():
                     <h2>管理员登入</h2>
                     <p>
                         本系统为餐厅评价资料分析平台。
-                        系统提供两种登入方式：手动帐号密码登入，以及 AI 人脸辨识登入 Demo。
+                        系统提供两种登入方式：手动帐号密码登入，以及 OpenCV 人脸侦测登入。
                     </p>
                     <p>
                         登入后可以使用餐厅资料管理、查询、JSON API、资料分析、新增餐厅和删除餐厅等功能。
@@ -127,7 +95,10 @@ def home():
         """
 
     # 已登入：才显示完整功能
-    return """
+    login_method = session.get("login_method", "管理员登入")
+    username = session.get("username", "admin")
+
+    return f"""
     <html>
     <head>
         <meta charset="UTF-8">
@@ -149,6 +120,8 @@ def home():
                     查看 JSON API，并进行餐厅资料分析。
                 </p>
                 <p class="success-text">目前已登入管理员模式，可以使用完整功能。</p>
+                <p><strong>登入帐号：</strong>{username}</p>
+                <p><strong>登入方式：</strong>{login_method}</p>
             </div>
 
             <div class="menu">
@@ -174,8 +147,9 @@ def login():
         username = request.form.get("username")
         password = request.form.get("password")
 
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        if check_login(username, password):
             session["login"] = True
+            session["username"] = username
             session["login_method"] = "手动帐号密码登入"
             return redirect("/")
         else:
@@ -209,8 +183,12 @@ def login():
 
                 <p class="warning-text">{error}</p>
 
-                <p>测试帐号：admin</p>
-                <p>测试密码：1234</p>
+                <h3>测试帐号</h3>
+                <p>帐号：admin</p>
+                <p>密码：1234</p>
+                <hr>
+                <p>帐号：yungchen</p>
+                <p>密码：teed6Vu[b)oa</p>
             </div>
 
             <a class="back-btn" href="/">回首页</a>
@@ -236,17 +214,21 @@ def face_login():
             if not any(filename.endswith(ext) for ext in allowed_ext):
                 result = "上传失败：图片格式只支援 jpg、jpeg、png、webp。"
             else:
+                os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
                 save_path = os.path.join(UPLOAD_FOLDER, face_image.filename)
                 face_image.save(save_path)
 
-                file_size = os.path.getsize(save_path)
+                has_face, face_count = detect_face(save_path)
 
-                if file_size > 0:
+                if has_face:
                     session["login"] = True
-                    session["login_method"] = "AI 人脸辨识登入 Demo"
+                    session["username"] = "face_admin"
+                    session["login_method"] = "OpenCV 人脸侦测登入"
+                    session["face_count"] = face_count
                     return redirect("/face-result")
                 else:
-                    result = "影像分析失败：档案内容为空。"
+                    result = "人脸辨识失败：系统没有侦测到人脸，请换一张清楚的正面照片。"
 
     return f"""
     <html>
@@ -258,15 +240,19 @@ def face_login():
     <body>
         <div class="header">
             <h1>人脸辨识登入</h1>
-            <p>AI Face Login Demo</p>
+            <p>OpenCV Face Detection Login</p>
         </div>
 
         <div class="container">
             <div class="card">
-                <h2>AI Vision 登入说明</h2>
+                <h2>OpenCV 人脸侦测登入说明</h2>
                 <p>
-                    此功能为 AI Vision Demo，主要展示影像上传、影像分析与身份验证流程。
-                    上传管理员照片后，系统会检查图片格式与档案内容，并模拟完成管理员身份验证。
+                    此功能使用本学期 OpenCV 课程中的 Haar Cascade 人脸侦测方法。
+                    系统会读取上传图片、转换为灰阶影像，并侦测图片中是否有人脸。
+                </p>
+                <p>
+                    如果侦测到人脸，系统会进入管理员模式；
+                    如果没有侦测到人脸，登入会失败。
                 </p>
 
                 <form method="POST" enctype="multipart/form-data">
@@ -289,7 +275,12 @@ def face_login():
 
 @app.route("/face-result")
 def face_result():
-    return """
+    if not is_login():
+        return redirect("/login-required")
+
+    face_count = session.get("face_count", 0)
+
+    return f"""
     <html>
     <head>
         <meta charset="UTF-8">
@@ -299,14 +290,14 @@ def face_result():
     <body>
         <div class="header">
             <h1>人脸辨识结果</h1>
-            <p>AI Vision Analysis Result</p>
+            <p>OpenCV Face Detection Result</p>
         </div>
 
         <div class="container">
             <div class="card">
                 <h2>辨识成功</h2>
-                <p>系统已接收上传影像，并完成基础影像分析。</p>
-                <p>分析流程包含：图片上传、格式检查、档案内容检查、管理员身份验证 Demo。</p>
+                <p>系统已成功读取上传图片，并使用 OpenCV Haar Cascade 完成人脸侦测。</p>
+                <p>侦测到的人脸数量：{face_count}</p>
                 <p class="success-text">目前已进入管理员模式，可以新增与删除餐厅资料。</p>
             </div>
 
@@ -411,17 +402,14 @@ def add_restaurant():
         price_level = request.form.get("price_level")
         address = request.form.get("address")
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        INSERT INTO restaurants
-        (name, area, category, rating, price_level, address)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (name, area, category, float(rating), price_level, address))
-
-        conn.commit()
-        conn.close()
+        insert_restaurant(
+            name=name,
+            area=area,
+            category=category,
+            rating=rating,
+            price_level=price_level,
+            address=address,
+        )
 
         return redirect("/restaurants")
 
@@ -476,17 +464,11 @@ def add_restaurant():
 
 
 @app.route("/delete/<int:restaurant_id>")
-def delete_restaurant(restaurant_id):
+def delete_restaurant_route(restaurant_id):
     if not is_login():
         return redirect("/login-required")
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM restaurants WHERE id = ?", (restaurant_id,))
-
-    conn.commit()
-    conn.close()
+    delete_restaurant(restaurant_id)
 
     return redirect("/restaurants")
 
@@ -543,10 +525,95 @@ def api_restaurants():
             "category": r["category"],
             "rating": r["rating"],
             "price_level": r["price_level"],
-            "address": r["address"]
+            "address": r["address"],
         })
 
     return jsonify(data)
+
+
+@app.route("/api/data", methods=["GET"])
+def api_get_clean_data():
+    if not is_login():
+        return redirect("/login-required")
+
+    keyword = request.args.get("keyword")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if keyword:
+        cursor.execute("""
+        SELECT * FROM clean_data
+        WHERE clean_title LIKE ? OR clean_content LIKE ? OR keyword LIKE ?
+        ORDER BY id DESC
+        """, (f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"))
+    else:
+        cursor.execute("SELECT * FROM clean_data ORDER BY id DESC")
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    data = []
+    for r in rows:
+        data.append({
+            "id": r["id"],
+            "raw_id": r["raw_id"],
+            "clean_title": r["clean_title"],
+            "clean_content": r["clean_content"],
+            "keyword": r["keyword"],
+            "created_at": r["created_at"],
+        })
+
+    return jsonify(data)
+
+
+@app.route("/api/data", methods=["POST"])
+def api_post_clean_data():
+    if not is_login():
+        return redirect("/login-required")
+
+    data = request.get_json()
+
+    clean_title = data.get("clean_title")
+    clean_content = data.get("clean_content")
+    keyword = data.get("keyword")
+    raw_id = data.get("raw_id", None)
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO clean_data (raw_id, clean_title, clean_content, keyword)
+    VALUES (?, ?, ?, ?)
+    """, (raw_id, clean_title, clean_content, keyword))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "message": "新增 clean_data 成功",
+        "clean_title": clean_title,
+        "keyword": keyword,
+    })
+
+
+@app.route("/api/data/<int:clean_id>", methods=["DELETE"])
+def api_delete_clean_data(clean_id):
+    if not is_login():
+        return redirect("/login-required")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM clean_data WHERE id = ?", (clean_id,))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "message": "删除 clean_data 成功",
+        "id": clean_id,
+    })
 
 
 @app.route("/analysis")
@@ -554,7 +621,7 @@ def analysis():
     if not is_login():
         return redirect("/login-required")
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("SELECT COUNT(*) FROM restaurants")
@@ -572,6 +639,15 @@ def analysis():
     GROUP BY category
     """)
     category_counts = cursor.fetchall()
+
+    cursor.execute("SELECT COUNT(*) FROM raw_data")
+    raw_count = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM clean_data")
+    clean_count = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM users")
+    user_count = cursor.fetchone()[0]
 
     conn.close()
 
@@ -601,6 +677,21 @@ def analysis():
                 <div class="analysis-item">
                     <h2>{avg_rating:.2f}</h2>
                     <p>平均评分</p>
+                </div>
+
+                <div class="analysis-item">
+                    <h2>{raw_count}</h2>
+                    <p>原始资料数量</p>
+                </div>
+
+                <div class="analysis-item">
+                    <h2>{clean_count}</h2>
+                    <p>清洗后资料数量</p>
+                </div>
+
+                <div class="analysis-item">
+                    <h2>{user_count}</h2>
+                    <p>使用者数量</p>
                 </div>
     """
 
@@ -647,5 +738,5 @@ def analysis():
 
 
 if __name__ == "__main__":
-    init_db()
+    init_database()
     app.run(debug=True)
