@@ -311,3 +311,10 @@ button:hover {
     color: #d63031;
     font-weight: bold;
 }
+
+.result-img {
+    max-width: 100%;
+    border-radius: 16px;
+    box-shadow: 0 8px 22px rgba(99, 55, 20, 0.2);
+    margin-top: 15px;
+}

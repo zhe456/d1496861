@@ -1,6 +1,8 @@
-from flask import Flask, jsonify, request, redirect, session
+from flask import Flask, jsonify, request, redirect, session, send_from_directory
+from werkzeug.utils import secure_filename
 import os
 import cv2
+import numpy as np
 
 from src.database.db import (
     init_database,
@@ -23,36 +25,139 @@ def is_login():
     return session.get("login") == True
 
 
+def read_image(image_path):
+    """
+    解决 Windows 中文路径或特殊档名导致 cv2.imread 读取失败的问题。
+    """
+    try:
+        data = np.fromfile(image_path, dtype=np.uint8)
+        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        return img
+    except Exception:
+        return cv2.imread(image_path)
+
+
+def save_image(image_path, img):
+    """
+    解决 Windows 中文路径或特殊档名导致 cv2.imwrite 储存失败的问题。
+    """
+    ext = os.path.splitext(image_path)[1]
+
+    if ext == "":
+        ext = ".png"
+        image_path = image_path + ext
+
+    success, encoded_img = cv2.imencode(ext, img)
+
+    if success:
+        encoded_img.tofile(image_path)
+        return True
+
+    return False
+
+
 def detect_face(image_path):
     """
-    使用 OpenCV Haar Cascade 偵測圖片中是否有人臉。
-    有偵測到人臉就回傳 True，否則回傳 False。
+    OpenCV 人脸侦测加强版：
+    1. 使用 Haar Cascade 找人脸
+    2. 使用眼睛侦测验证是否像真正人脸
+    3. 过滤太小或太大的错误框
+    4. 只有通过验证才算登入成功
+    5. 成功后会输出绿色人脸框与蓝色眼睛框
     """
 
-    img = cv2.imread(image_path)
+    img = read_image(image_path)
 
     if img is None:
-        return False, 0
+        return False, 0, None
 
-    # OpenCV 讀取彩色影像是 BGR，轉成灰階後比較適合人臉偵測
+    height, width = img.shape[:2]
+    image_area = width * height
+
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    face_cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    face_cascade = cv2.CascadeClassifier(face_cascade_path)
+    # 让亮度平均一点，提升侦测稳定度
+    gray = cv2.equalizeHist(gray)
 
-    if face_cascade.empty():
-        return False, 0
+    face_cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    eye_cascade_path = cv2.data.haarcascades + "haarcascade_eye.xml"
+
+    face_cascade = cv2.CascadeClassifier(face_cascade_path)
+    eye_cascade = cv2.CascadeClassifier(eye_cascade_path)
+
+    if face_cascade.empty() or eye_cascade.empty():
+        return False, 0, None
 
     faces = face_cascade.detectMultiScale(
         gray,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(50, 50),
+        scaleFactor=1.08,
+        minNeighbors=8,
+        minSize=(80, 80),
     )
 
-    face_count = len(faces)
+    valid_faces = []
 
-    return face_count > 0, face_count
+    for (x, y, w, h) in faces:
+        face_area = w * h
+        face_ratio = face_area / image_area
+
+        # 过滤明显不合理的框
+        # 太小通常是误判，太大也可能不是正常人脸
+        if face_ratio < 0.01 or face_ratio > 0.45:
+            continue
+
+        # 取出脸部区域
+        face_gray = gray[y:y + h, x:x + w]
+
+        eyes = eye_cascade.detectMultiScale(
+            face_gray,
+            scaleFactor=1.08,
+            minNeighbors=6,
+            minSize=(15, 15),
+        )
+
+        # 至少侦测到 1 个眼睛，才比较像真正人脸
+        if len(eyes) < 1:
+            continue
+
+        valid_faces.append((x, y, w, h, eyes))
+
+    # 只画通过验证的人脸
+    for (x, y, w, h, eyes) in valid_faces:
+        cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 3)
+
+        cv2.putText(
+            img,
+            "Human Face",
+            (x, y - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 255, 0),
+            2,
+        )
+
+        face_img = img[y:y + h, x:x + w]
+
+        for (ex, ey, ew, eh) in eyes:
+            cv2.rectangle(
+                face_img,
+                (ex, ey),
+                (ex + ew, ey + eh),
+                (255, 0, 0),
+                2,
+            )
+
+    face_count = len(valid_faces)
+
+    if face_count > 0:
+        result_filename = "result_" + os.path.basename(image_path)
+        result_path = os.path.join(UPLOAD_FOLDER, result_filename)
+
+        save_image(result_path, img)
+
+        return True, face_count, result_filename
+
+    return False, 0, None
 
 
 @app.route("/")
@@ -94,7 +199,6 @@ def home():
         </html>
         """
 
-    # 已登入：才显示完整功能
     login_method = session.get("login_method", "管理员登入")
     username = session.get("username", "admin")
 
@@ -129,6 +233,7 @@ def home():
                 <a href="/restaurants?category=火锅">查询火锅餐厅</a>
                 <a href="/restaurants?min_rating=4.3">评分 4.3 以上</a>
                 <a href="/api/restaurants">查看 JSON API</a>
+                <a href="/api/data">查看 clean_data API</a>
                 <a href="/analysis">查看资料分析</a>
                 <a href="/add">新增餐厅资料</a>
                 <a href="/logout">登出系统</a>
@@ -216,19 +321,21 @@ def face_login():
             else:
                 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-                save_path = os.path.join(UPLOAD_FOLDER, face_image.filename)
+                safe_name = secure_filename(face_image.filename)
+                save_path = os.path.join(UPLOAD_FOLDER, safe_name)
                 face_image.save(save_path)
 
-                has_face, face_count = detect_face(save_path)
+                has_face, face_count, result_filename = detect_face(save_path)
 
                 if has_face:
                     session["login"] = True
                     session["username"] = "face_admin"
                     session["login_method"] = "OpenCV 人脸侦测登入"
                     session["face_count"] = face_count
+                    session["face_result_image"] = result_filename
                     return redirect("/face-result")
                 else:
-                    result = "人脸辨识失败：系统没有侦测到人脸，请换一张清楚的正面照片。"
+                    result = "人脸辨识失败：系统没有侦测到通过验证的人脸，请换一张清楚的正面照片。"
 
     return f"""
     <html>
@@ -247,12 +354,12 @@ def face_login():
             <div class="card">
                 <h2>OpenCV 人脸侦测登入说明</h2>
                 <p>
-                    此功能使用本学期 OpenCV 课程中的 Haar Cascade 人脸侦测方法。
+                    此功能使用 OpenCV Haar Cascade 人脸侦测。
                     系统会读取上传图片、转换为灰阶影像，并侦测图片中是否有人脸。
                 </p>
                 <p>
-                    如果侦测到人脸，系统会进入管理员模式；
-                    如果没有侦测到人脸，登入会失败。
+                    为了减少误判，系统会再使用眼睛侦测进行验证。
+                    只有侦测到类似人脸与眼睛特征时，才会登入成功。
                 </p>
 
                 <form method="POST" enctype="multipart/form-data">
@@ -279,6 +386,16 @@ def face_result():
         return redirect("/login-required")
 
     face_count = session.get("face_count", 0)
+    result_image = session.get("face_result_image", "")
+
+    image_html = ""
+    if result_image:
+        image_html = f"""
+        <div class="card">
+            <h2>人脸框选结果图</h2>
+            <img class="result-img" src="/uploads/{result_image}" alt="人脸侦测结果">
+        </div>
+        """
 
     return f"""
     <html>
@@ -298,8 +415,11 @@ def face_result():
                 <h2>辨识成功</h2>
                 <p>系统已成功读取上传图片，并使用 OpenCV Haar Cascade 完成人脸侦测。</p>
                 <p>侦测到的人脸数量：{face_count}</p>
+                <p>绿色框代表人脸位置，蓝色框代表眼睛位置。</p>
                 <p class="success-text">目前已进入管理员模式，可以新增与删除餐厅资料。</p>
             </div>
+
+            {image_html}
 
             <div class="menu">
                 <a href="/">进入系统首页</a>
@@ -312,6 +432,11 @@ def face_result():
     </body>
     </html>
     """
+
+
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 
 @app.route("/logout")
