@@ -219,9 +219,9 @@ def home():
             <div class="card">
                 <h2>系统简介</h2>
                 <p>
-                    本系统用于收集、查询和分析餐厅评价资料。
-                    管理员可以查看餐厅清单、新增餐厅资料、删除错误资料、
-                    查看 JSON API，并进行餐厅资料分析。
+                    本系统为餐厅评价资料 AI 服务平台，
+                    结合资料蒐集、资料清洗、SQLite 资料库、REST API、
+                    即时客服聊天室、登入系统与 OpenCV 人脸侦测功能。
                 </p>
                 <p class="success-text">目前已登入管理员模式，可以使用完整功能。</p>
                 <p><strong>登入帐号：</strong>{username}</p>
