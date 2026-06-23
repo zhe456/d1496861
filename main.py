@@ -102,7 +102,6 @@ def detect_face(image_path):
         face_ratio = face_area / image_area
 
         # 过滤明显不合理的框
-        # 太小通常是误判，太大也可能不是正常人脸
         if face_ratio < 0.01 or face_ratio > 0.45:
             continue
 
@@ -185,7 +184,8 @@ def home():
                         系统提供两种登入方式：手动帐号密码登入，以及 OpenCV 人脸侦测登入。
                     </p>
                     <p>
-                        登入后可以使用餐厅资料管理、查询、JSON API、资料分析、新增餐厅和删除餐厅等功能。
+                        登入后可以使用餐厅资料管理、查询、JSON API、资料分析、新增餐厅、
+                        删除餐厅和即时客服聊天室等功能。
                     </p>
                     <p class="warning-text">目前尚未登入，请选择一种登入方式。</p>
                 </div>
@@ -236,6 +236,7 @@ def home():
                 <a href="/api/data">查看 clean_data API</a>
                 <a href="/analysis">查看资料分析</a>
                 <a href="/add">新增餐厅资料</a>
+                <a href="/chat">即时客服聊天室</a>
                 <a href="/logout">登出系统</a>
             </div>
         </div>
@@ -426,6 +427,7 @@ def face_result():
                 <a href="/add">新增餐厅资料</a>
                 <a href="/restaurants">查看餐厅清单</a>
                 <a href="/analysis">查看资料分析</a>
+                <a href="/chat">即时客服聊天室</a>
                 <a href="/logout">登出系统</a>
             </div>
         </div>
@@ -596,6 +598,83 @@ def delete_restaurant_route(restaurant_id):
     delete_restaurant(restaurant_id)
 
     return redirect("/restaurants")
+
+
+@app.route("/chat")
+def chat_page():
+    if not is_login():
+        return redirect("/login-required")
+
+    return """
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>即时客服聊天室</title>
+        <link rel="stylesheet" href="/static/style.css">
+    </head>
+    <body>
+        <div class="header">
+            <h1>即时客服聊天室</h1>
+            <p>Socket Chat Service</p>
+        </div>
+
+        <div class="container">
+            <div class="card">
+                <h2>聊天室功能说明</h2>
+                <p>
+                    本系统的即时客服聊天室使用 Python Socket 建立，
+                    并使用 Threading 支援多个使用者同时连线。
+                </p>
+                <p>
+                    使用者需要先输入帐号与密码，通过 hash 登录验证后，
+                    才能进入聊天室传送与接收讯息。
+                </p>
+            </div>
+
+            <div class="card">
+                <h2>启动方式</h2>
+                <p>请先开启第一个终端机，启动聊天室服务器：</p>
+
+                <pre>uv run chat_server.py</pre>
+
+                <p>再开启第二个终端机，启动聊天室客户端：</p>
+
+                <pre>uv run chat_client.py</pre>
+
+                <p>如果要测试多人聊天，可以再开启第三个终端机：</p>
+
+                <pre>uv run chat_client.py</pre>
+            </div>
+
+            <div class="card">
+                <h2>测试帐号</h2>
+                <p>帐号：admin</p>
+                <p>密码：1234</p>
+                <hr>
+                <p>帐号：yungchen</p>
+                <p>密码：teed6Vu[b)oa</p>
+            </div>
+
+            <div class="card">
+                <h2>对应课程技术</h2>
+                <ul>
+                    <li>Socket Client / Server</li>
+                    <li>Threading 多执行绪</li>
+                    <li>Exception Handling 例外处理</li>
+                    <li>Hash/Login 帐号安全</li>
+                </ul>
+            </div>
+
+            <div class="menu">
+                <a href="/">回系统首页</a>
+                <a href="/analysis">查看资料分析</a>
+                <a href="/restaurants">查看餐厅清单</a>
+                <a href="/logout">登出系统</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
 
 
 @app.route("/login-required")
